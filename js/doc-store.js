@@ -59,6 +59,14 @@
     if (error) fail("Could not send login link", error);
   }
 
+  // The project's email template sends a one-time code rather than a link.
+  async function verifyCode(email, code) {
+    const { error } = await sb.auth.verifyOtp({
+      email: String(email).trim(), token: String(code).trim(), type: "email",
+    });
+    if (error) fail("Could not log in with that code", error);
+  }
+
   async function signOut() {
     await sb.auth.signOut();
     location.reload();
@@ -116,5 +124,5 @@
     return data || 0;
   }
 
-  root.DocStore = { session, sendLoginLink, signOut, list, insert, remove, removeAllMine, maxSeq, me: () => me };
+  root.DocStore = { session, sendLoginLink, verifyCode, signOut, list, insert, remove, removeAllMine, maxSeq, me: () => me };
 })(this);

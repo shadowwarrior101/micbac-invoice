@@ -303,10 +303,15 @@ nav{background:var(--blk);padding:0 36px;display:flex;align-items:center;justify
 <div class="auth-gate" id="authGate">
   <div class="auth-card">
     <h2>MICBAC Invoices</h2>
-    <p>Sign in with your work email. We'll email you a one-time login link.</p>
+    <p>Sign in with your work email. We'll email you a one-time login code.</p>
     <form onsubmit="event.preventDefault();sendLoginLink();">
       <input type="email" id="authEmail" placeholder="you@micbacindia.com" autocomplete="email" required/>
-      <button type="submit" id="authBtn">Email me a login link</button>
+      <button type="submit" id="authBtn">Email me a login code</button>
+    </form>
+    <!-- The shared Supabase email template sends a code (the orders app relies on it), so it's entered here. -->
+    <form id="authCodeForm" style="display:none;margin-top:10px" onsubmit="event.preventDefault();verifyLoginCode();">
+      <input type="text" id="authCode" inputmode="numeric" autocomplete="one-time-code" placeholder="Code from the email" pattern="\d{6,10}" required/>
+      <button type="submit" id="authCodeBtn">Log in</button>
     </form>
     <div class="auth-msg" id="authMsg">Checking session…</div>
   </div>
@@ -2272,8 +2277,24 @@ async function clearAllRecords() {
 function authMsg(text,isErr){const m=document.getElementById('authMsg');m.textContent=text;m.className='auth-msg'+(isErr?' err':'');}
 async function sendLoginLink(){
   const btn=document.getElementById('authBtn');btn.disabled=true;
-  try{await DocStore.sendLoginLink(document.getElementById('authEmail').value);authMsg('Check your inbox for the login link.');}
+  try{
+    await DocStore.sendLoginLink(document.getElementById('authEmail').value);
+    authMsg('Check your inbox and enter the code from the email.');
+  }
   catch(e){authMsg(/signups not allowed|not found/i.test(e.message)?'This email has no account. Ask the admin to invite you.':e.message,true);}
+  finally{
+    btn.disabled=false;
+    // Shown even if sending failed (e.g. rate limit) — an earlier code may still be valid.
+    document.getElementById('authCodeForm').style.display='';
+    document.getElementById('authCode').focus();
+  }
+}
+async function verifyLoginCode(){
+  const btn=document.getElementById('authCodeBtn');btn.disabled=true;
+  try{
+    await DocStore.verifyCode(document.getElementById('authEmail').value,document.getElementById('authCode').value);
+    await startAuth();
+  }catch(e){authMsg(e.message,true);}
   finally{btn.disabled=false;}
 }
 async function startAuth(){
