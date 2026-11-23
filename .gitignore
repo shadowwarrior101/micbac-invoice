@@ -4,3 +4,9 @@ Micbac-India-(White).png
 MicbacSeal.jpeg
 Micback-Definite-Edition-logo-Black.png
 MicbacLetterHead.docx
+
+# Real customer data for one-off imports; never commit (public repo)
+data-import/
+node_modules/
+.DS_Store
+supabase/.temp/
