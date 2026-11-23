@@ -38,12 +38,16 @@ other user sees everything (including exports' records). Works the same as befor
 - `20261123064048_restricted_doc_types`: restricted users can insert/update only `proforma` and `quotation` rows
   (commercial invoices rejected by RLS). UI for restricted users: Official Letter hidden, invoice type locked to
   Proforma, makePDF refuses letters/commercial invoices. Letters are never stored, so that block is UI-only.
+- Login uses the emailed one-time **code** (`verifyOtp`): the project's shared email template sends a code, not a
+  link (the orders app relies on that), so the sign-in screen has a code field. Redirect URL was added by the user.
+- Verified as a restricted user with a temporary test login (allow-listed as restricted, then removed): sees 0 of
+  117 records, next numbers PI/001 and QT/003. It created no records. Its Supabase Auth account still exists — delete
+  it under Authentication → Users if not needed.
 - Deployed 2026-11-23: fast-forwarded `main` to the work and pushed; GitHub Pages serves
   https://shadowwarrior101.github.io/micbac-invoice/ (GitHub username changed from anupaminnit; remote updated).
 
 **Pending**
-- Invite exports@micbacindia.com in Supabase Auth; add `https://shadowwarrior101.github.io/micbac-invoice/**` to
-  Auth → URL Configuration → Redirect URLs (leave Site URL alone — the orders app uses it).
+- Invite exports@micbacindia.com in Supabase Auth (redirect URL is done).
 - After import: undeploy the Apps Script web app (its public token still allows reading/wiping the Sheet).
 - Logged-in UI not yet checked in a browser.
 
