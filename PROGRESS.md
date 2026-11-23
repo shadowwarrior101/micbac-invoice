@@ -35,8 +35,12 @@ other user sees everything (including exports' records). Works the same as befor
 - Imported Sheet rows are owned by nilesh@micbacindia.com and shown as "Imported (Sheet)"; exports doesn't see them.
 - Sheet token was public, so the Sheet could never enforce per-user visibility — hence the move.
 
+- Deployed 2026-11-23: fast-forwarded `main` to the work and pushed; GitHub Pages serves
+  https://shadowwarrior101.github.io/micbac-invoice/ (GitHub username changed from anupaminnit; remote updated).
+
 **Pending**
-- Invite exports@micbacindia.com in Supabase Auth; add the site URL to Auth → URL Configuration → Redirect URLs.
+- Invite exports@micbacindia.com in Supabase Auth; add `https://shadowwarrior101.github.io/micbac-invoice/**` to
+  Auth → URL Configuration → Redirect URLs (leave Site URL alone — the orders app uses it).
 - After import: undeploy the Apps Script web app (its public token still allows reading/wiping the Sheet).
 - Logged-in UI not yet checked in a browser.
 
