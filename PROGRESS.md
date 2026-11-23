@@ -35,6 +35,9 @@ other user sees everything (including exports' records). Works the same as befor
 - Imported Sheet rows are owned by nilesh@micbacindia.com and shown as "Imported (Sheet)"; exports doesn't see them.
 - Sheet token was public, so the Sheet could never enforce per-user visibility — hence the move.
 
+- `20261123064048_restricted_doc_types`: restricted users can insert/update only `proforma` and `quotation` rows
+  (commercial invoices rejected by RLS). UI for restricted users: Official Letter hidden, invoice type locked to
+  Proforma, makePDF refuses letters/commercial invoices. Letters are never stored, so that block is UI-only.
 - Deployed 2026-11-23: fast-forwarded `main` to the work and pushed; GitHub Pages serves
   https://shadowwarrior101.github.io/micbac-invoice/ (GitHub username changed from anupaminnit; remote updated).
 

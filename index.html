@@ -1182,6 +1182,8 @@ document.addEventListener('DOMContentLoaded', () => {
 let docType = 'invoice';
 
 function switchDocType(type) {
+  // Restricted users have no letter option (e.g. a letter draft being loaded).
+  if (type === 'letter' && isRestricted()) type = 'quotation';
   docType = type;
   const isQt  = type === 'quotation';
   const isLtr = type === 'letter';
@@ -1237,6 +1239,8 @@ function genBtnLabel() {
                       : '⤓ Download Commercial Invoice + Packing List (PDF)';
 }
 function updateInvTypeUI() {
+  // Restricted users: an old draft/record may say "commercial"; force proforma.
+  if (isRestricted()) document.getElementById('invType').value = 'proforma';
   const btn = document.getElementById('genBtn');
   if (btn) btn.textContent = genBtnLabel();
 }
@@ -2278,8 +2282,30 @@ async function startAuth(){
     if(!me){authMsg('');return;}
     document.getElementById('authGate').classList.add('off');
     document.getElementById('navUser').textContent=me.email;
+    if(isRestricted()) applyRestrictedUI();
     autoInvoiceNumber();
   }catch(e){authMsg(e.message,true);}
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// RESTRICTED USERS (exports@) — proformas and quotations only. The database
+// rejects commercial-invoice records for them; letters are never stored, so
+// this UI (plus the makePDF guard) is what blocks those.
+// ═══════════════════════════════════════════════════════════════════════
+function isRestricted(){const me=DocStore.me();return !!me&&me.access==='restricted';}
+function restrictedBlockReason(){
+  if(!isRestricted()) return '';
+  if(docType==='letter') return 'Official letters are not available for your account';
+  if(docType==='invoice'&&!isProforma()) return 'Your account can create proforma invoices and quotations only';
+  return '';
+}
+function applyRestrictedUI(){
+  document.getElementById('dt-letter').style.display='none';
+  document.getElementById('dt-invoice').innerHTML='&#128196; Proforma Invoice';
+  const sel=document.getElementById('invType');
+  sel.querySelector('option[value="commercial"]')?.remove();
+  sel.value='proforma';
+  switchDocType(docType==='letter'?'quotation':docType);
 }
 
 function recordsToRows(recs) {
@@ -2320,6 +2346,8 @@ function exportRecordsExcel() {
 }
 
 function makePDF(gmailUrl) {
+  const blocked = restrictedBlockReason();
+  if (blocked) { toast(blocked, "err"); return; }
   if (docType === 'letter') {
     if (!letterBodyHTML()) { toast("Write the letter content first","err"); return; }
     const ltrBtn = document.getElementById("ltrBtn");
