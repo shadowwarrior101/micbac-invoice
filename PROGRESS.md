@@ -1,5 +1,39 @@
 # PROGRESS
 
+## 2026-11-23 — Records move to Supabase; exports@ sees only its own
+
+**Goal:** `exports@micbacindia.com` sees only the invoices / proformas / quotations it created; every
+other user sees everything (including exports' records). Works the same as before for everyone else.
+
+**Done**
+- Records (the Records modal, next-number lookup, delete) now use Supabase table `invoice_documents`
+  in the shared "Micbac" project instead of the Google Sheet / Apps Script. `apps-script/Code.gs` removed.
+- Migrations (applied): `20261123055458_invoice_documents`, `20261123060852_invoice_documents_record_log`.
+  - `invoice_users` allow-list (email, `restricted`): ops@, nilesh@, micbac.india@gmail.com full; exports@ restricted.
+    Only listed emails can use the site — the auth pool also holds orders-app accounts.
+  - RLS: full users read all rows; restricted users read only their own; only the creator can delete.
+  - Append-only log, same as the Sheet (a changed re-issue adds a row; the fingerprint guard still skips identical ones).
+  - `invoice_max_seq(prefix, fy)`: per-series max (MIPLWB/, MIPLWB/PI/, MIPLWB/QT/), exact prefix, across ALL rows,
+    so exports never reuses a number it can't see.
+- Magic-link login gate (`shouldCreateUser: false`, same as freightysh-invoice); Sign out in the nav.
+- Records modal: new "Created By" column (also in CSV/Excel); delete button only on your own rows;
+  "Clear All" became "Clear My Records" (RLS can't delete other people's rows anyway).
+- Save/Load Draft stay per-browser localStorage, unchanged.
+- Verified: migration + RLS assertions run against the live DB in rolled-back transactions (both migrations); 12 unit tests pass.
+
+**Decisions / deviations**
+- Shared the Micbac Supabase project (user's choice). Trade-off: the orders app lets any logged-in user read
+  orders/customers/logistics, so invoice-site users (incl. exports) can read that via the API.
+- Imported Sheet rows are owned by nilesh@micbacindia.com and shown as "Imported (Sheet)"; exports doesn't see them.
+- Sheet token was public, so the Sheet could never enforce per-user visibility — hence the move.
+
+**Pending**
+- Import the 117 Sheet records: `data-import/sheet-import.sql` (gitignored — real customer data; safe to re-run, it
+  aborts if already imported). Needs the Supabase CLI logged in to the Micbac account.
+- Invite exports@micbacindia.com in Supabase Auth; add the site URL to Auth → URL Configuration → Redirect URLs.
+- After import: undeploy the Apps Script web app (its public token still allows reading/wiping the Sheet).
+- Logged-in UI not yet checked in a browser.
+
 ## 2026-09-28 — Seal toggle, proforma invoice, quotation weighing unit
 
 **Done**
