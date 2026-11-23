@@ -8,6 +8,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="js/amount-words.js"></script>
 <script src="js/quantities.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/doc-store.js"></script>
 <style>
 :root{
   --org:#C8F23A;--lorg:#EEF6CE;--morg:#C2CE9B;--dorg:#5E7A0A;
@@ -171,6 +174,20 @@ nav{background:var(--blk);padding:0 36px;display:flex;align-items:center;justify
 .toast{position:fixed;bottom:26px;right:26px;color:#fff;padding:13px 22px;border-radius:10px;font-size:.85rem;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.2);transform:translateY(80px);opacity:0;transition:.32s cubic-bezier(.34,1.56,.64,1);z-index:999;display:flex;align-items:center;gap:10px}
 .toast.show{transform:translateY(0);opacity:1}
 
+/* ── AUTH GATE ── */
+.auth-gate{position:fixed;inset:0;z-index:9999;background:#F0F0F0;display:flex;align-items:center;justify-content:center;padding:16px}
+.auth-gate.off{display:none}
+.auth-card{background:#fff;border-radius:12px;box-shadow:var(--sh);padding:28px;width:100%;max-width:380px;border-top:4px solid var(--org)}
+.auth-card h2{font-size:1.15rem;margin-bottom:6px}
+.auth-card p{font-size:.85rem;color:var(--muted);margin-bottom:16px;line-height:1.5}
+.auth-card form{display:flex;flex-direction:column;gap:10px}
+.auth-card input{padding:10px 12px;border:1px solid var(--border);border-radius:var(--r);font:inherit;font-size:.9rem}
+.auth-card button{padding:10px 12px;border:none;border-radius:var(--r);background:var(--blk);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+.auth-card button:disabled{opacity:.6;cursor:wait}
+.auth-msg{margin-top:12px;font-size:.82rem;color:var(--muted);min-height:1.2em}
+.auth-msg.err{color:#DC2626}
+.nav-user{color:rgba(255,255,255,.6);font-size:.67rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
 /* ── PORT PICKER ── */
 .port-picker{position:relative;width:100%}
 
@@ -283,6 +300,17 @@ nav{background:var(--blk);padding:0 36px;display:flex;align-items:center;justify
 </style>
 </head>
 <body>
+<div class="auth-gate" id="authGate">
+  <div class="auth-card">
+    <h2>MICBAC Invoices</h2>
+    <p>Sign in with your work email. We'll email you a one-time login link.</p>
+    <form onsubmit="event.preventDefault();sendLoginLink();">
+      <input type="email" id="authEmail" placeholder="you@micbacindia.com" autocomplete="email" required/>
+      <button type="submit" id="authBtn">Email me a login link</button>
+    </form>
+    <div class="auth-msg" id="authMsg">Checking session…</div>
+  </div>
+</div>
 
 <nav>
   <div class="nl">
@@ -297,7 +325,8 @@ nav{background:var(--blk);padding:0 36px;display:flex;align-items:center;justify
     <button class="nav-btn" onclick="loadDraft()">&#128193; Load</button>
     <button class="nav-btn" onclick="cloneInvoice()">&#8662; Clone</button>
     <button class="nav-btn" onclick="showRecords()">&#128203; Records</button>
-    <span class="nb">Export Documents</span>
+    <span class="nav-user" id="navUser"></span>
+    <button class="nav-btn" onclick="DocStore.signOut()">Sign out</button>
   </div>
 </nav>
 <div class="nav-accent"></div>
@@ -1130,7 +1159,7 @@ document.addEventListener('DOMContentLoaded', () => {
   selectPort('pol', 'INCCU', 'Kolkata Port, India');
   updateBankPreview();
   autoFillDate();
-  autoInvoiceNumber();
+  startAuth();   // fills the invoice number once signed in
   renderAddressBook();
   updateCurrency();
 
@@ -1286,7 +1315,7 @@ function getCurrentFY() {
   return String(s).slice(-2)+"-"+String(s+1).slice(-2);
 }
 // Each document type has its own number series so quotations and proformas
-// don't consume commercial-invoice numbers. The Sheet's nextInvoiceNo matches
+// don't consume commercial-invoice numbers. invoice_max_seq() in Supabase matches
 // "<prefix><NNN>/<fy>" exactly, so prefix "MIPLWB/" never counts "MIPLWB/QT/…".
 const NUMBER_PREFIX = {invoice:'MIPLWB/', proforma:'MIPLWB/PI/', quotation:'MIPLWB/QT/'};
 function numberSeries() {
@@ -1307,7 +1336,7 @@ let _autoNo = '';   // the number we last filled in automatically
 // localStorage only tracks "last number issued by this browser" — across
 // devices that drifts out of sync and produces duplicate invoice numbers.
 // Fill in the local guess immediately (so the field isn't empty), then ask
-// the Sheet — the actual source of truth — for the real next number and
+// the database — the actual source of truth — for the real next number and
 // swap it in, unless the user has since typed something else themselves.
 // Re-runs on doc/invoice-type changes; a number the user typed is kept unless force.
 function autoInvoiceNumber(force) {
@@ -1316,18 +1345,18 @@ function autoInvoiceNumber(force) {
   const series = numberSeries();
   const fallback = fallbackInvoiceNo(series);
   el.value = _autoNo = fallback;
-  if (!APPS_SCRIPT_URL) return;
-  const url = APPS_SCRIPT_URL + '?action=nextInvoiceNo&prefix=' + encodeURIComponent(NUMBER_PREFIX[series])
-    + '&fy=' + encodeURIComponent(getCurrentFY()) + '&token=' + encodeURIComponent(APPS_SCRIPT_TOKEN);
-  fetch(url).then(r => r.json()).then(data => {
-    if (data.ok && data.invNo && el.value === fallback) el.value = _autoNo = data.invNo;
-  }).catch(e => console.warn('nextInvoiceNo lookup failed, using local fallback:', e));
+  if (!DocStore.me()) return;   // not signed in yet; startAuth() calls us again
+  const prefix = NUMBER_PREFIX[series], fy = getCurrentFY();
+  DocStore.maxSeq(prefix, fy).then(max => {
+    const next = prefix + String(max + 1).padStart(3, '0') + '/' + fy;
+    if (el.value === fallback) el.value = _autoNo = next;
+  }).catch(e => console.warn('next number lookup failed, using local fallback:', e));
 }
 
 // ═══════════════════════════════════════════════════════════════════════
 // DRAFT — SAVE / LOAD / CLONE
 // ═══════════════════════════════════════════════════════════════════════
-// withLetter=false for Sheet records: those track invoices/quotations, and
+// withLetter=false for saved records: those track invoices/quotations, and
 // shouldn't carry (or on load, overwrite) whatever letter is in progress.
 function getDraftData(withLetter=true) {
   const v=id=>document.getElementById(id)?.value||"";
@@ -1402,7 +1431,7 @@ function cloneInvoice() {
   const d=getDraftData();
   d.invDate=todayISO();
   restoreDraft(d);
-  autoInvoiceNumber(true);   // next number from the Sheet, not a local +1 that may already be taken
+  autoInvoiceNumber(true);   // next number from the database, not a local +1 that may already be taken
   go(0);
   toast("Invoice cloned — update fields as needed","ok");
 }
@@ -1864,7 +1893,7 @@ document.getElementById('navLogo').src = 'data:image/png;base64,' + LTR_LOGO;
 // OFFICIAL LETTER PDF
 // ═══════════════════════════════════════════════════════════════════════
 // Letter body HTML comes back from drafts and records (records are untrusted —
-// the Sheet token is public), so keep only the formatting the editor itself
+// other users write them), so keep only the formatting the editor itself
 // produces. Parsing via DOMParser is inert: nothing loads or runs.
 const RTE_TAGS = new Set(['B','STRONG','I','EM','U','BR','DIV','P','SPAN','FONT']);
 const RTE_DROP = new Set(['SCRIPT','STYLE','IFRAME','OBJECT','EMBED','TEMPLATE','NOSCRIPT']);
@@ -2087,17 +2116,12 @@ function rteColor(c) {
 })();
 
 // ═══════════════════════════════════════════════════════════════════════
-// INVOICE RECORDS — Google Sheets backend via Apps Script
+// INVOICE RECORDS — Supabase (invoice_documents). Who sees which records is
+// enforced by RLS: restricted users (exports@) only get rows they created.
 // ═══════════════════════════════════════════════════════════════════════
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby-qX0Zv9v39KLi-q8O2kOSGA2-YTwc3-L2N-di3o7E5IIhkRDWGn7qBIRWSjFyHo22/exec'; // Paste your deployed Web App URL here
-// Must match TOKEN in apps-script/Code.gs exactly. Not a real secret (this
-// repo is public) — it only stops the bare Web App URL, if it leaks on its
-// own without the surrounding code, from granting read/wipe access by itself.
-const APPS_SCRIPT_TOKEN = 'de1345c4ac01c9d50cdd504003e5799fdcbf361b';
-
 let _cachedRecords = [];
 
-// Every download/preview-download/email used to insert a new Sheet row, so one
+// Every download/preview-download/email used to insert a new record row, so one
 // invoice ended up recorded many times. Remember a hash of the last saved form
 // state per (type, number) and skip the insert when nothing has changed; an
 // edited re-issue still gets its own row.
@@ -2123,13 +2147,12 @@ function markSaved(key, fp) {
 }
 
 function saveInvoiceRecord() {
-  if (docType === 'letter' || !APPS_SCRIPT_URL) return;
-  const draftJson = JSON.stringify(getDraftData(false));
+  if (docType === 'letter') return;
+  const draft = getDraftData(false);
+  const draftJson = JSON.stringify(draft);
   const key = recordKey(), fp = hashStr(draftJson);
   if (getSavedFps()[key] === fp) return;    // identical document already recorded
   const rec = {
-    id: Date.now(),
-    createdAt: new Date().toISOString(),
     docType: isProforma() ? 'proforma' : docType,
     invNo: (document.getElementById('invNo')?.value || '').trim().toUpperCase(),
     invDate: gr('invDate') ? fd(gr('invDate')) : '',
@@ -2139,14 +2162,13 @@ function saveInvoiceRecord() {
     pol: getPort('pol') || gr('pol') || '',
     pod: getPort('pod') || gr('pod') || '',
     items: goodsRows.length,
-    draftJson,
   };
   if (!rec.invNo && !rec.buyer) return;
   markSaved(key, fp);                       // before the request, so a double-click can't insert twice
-  fetch(APPS_SCRIPT_URL, {
-    method: 'POST', mode: 'no-cors',
-    body: JSON.stringify({action: 'insert', record: rec, token: APPS_SCRIPT_TOKEN}),
-  }).catch(e => { markSaved(key, undefined); console.warn('Record save failed:', e); });
+  DocStore.insert(rec, draft).catch(e => {
+    markSaved(key, undefined);
+    toast('Not recorded: ' + e.message, 'err');
+  });
 }
 
 function renderRecordsTable(recs) {
@@ -2171,9 +2193,10 @@ function renderRecordsTable(recs) {
       <td style="color:var(--muted);font-size:.75rem">${esc(r.pol||'-')}</td>
       <td style="color:var(--muted);font-size:.75rem">${esc(r.pod||'-')}</td>
       <td style="color:var(--muted);font-size:.75rem;white-space:nowrap">${at}</td>
+      <td style="color:var(--muted);font-size:.75rem;white-space:nowrap">${esc(r.createdBy||'-')}</td>
       <td style="white-space:nowrap">
-        <button class="td-load" onclick="loadRecordToForm(${Number(r.id)||0})" title="Load into form">&#8635;</button>
-        <button class="td-del" onclick="deleteRecord(${Number(r.id)||0})" title="Delete">&#10005;</button>
+        <button class="td-load" onclick="loadRecordToForm('${esc(r.id)}')" title="Load into form">&#8635;</button>
+        ${r.mine ? `<button class="td-del" onclick="deleteRecord('${esc(r.id)}')" title="Delete">&#10005;</button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -2181,7 +2204,7 @@ function renderRecordsTable(recs) {
     <thead><tr>
       <th>Invoice No.</th><th>Date</th><th>Type</th><th>Buyer</th>
       <th style="text-align:right">Amount</th><th>POL</th><th>POD</th>
-      <th>Generated At</th><th></th>
+      <th>Generated At</th><th>Created By</th><th></th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
@@ -2191,17 +2214,11 @@ async function showRecords() {
   document.getElementById('recModal').classList.add('open');
   document.getElementById('recBody').innerHTML = '<div class="rec-empty">⏳ Loading records...</div>';
   document.getElementById('recCount').textContent = '';
-  if (!APPS_SCRIPT_URL) {
-    document.getElementById('recBody').innerHTML = '<div class="rec-empty">Apps Script not configured — add your Web App URL to the APPS_SCRIPT_URL constant in the code.</div>';
-    return;
-  }
   try {
-    const res = await fetch(APPS_SCRIPT_URL + '?action=list&token=' + encodeURIComponent(APPS_SCRIPT_TOKEN));
-    const data = await res.json();
-    _cachedRecords = data.ok ? data.records : [];
+    _cachedRecords = await DocStore.list();
     renderRecordsTable(_cachedRecords);
   } catch(e) {
-    document.getElementById('recBody').innerHTML = '<div class="rec-empty">❌ Failed to load records. Check your Apps Script URL.</div>';
+    document.getElementById('recBody').innerHTML = '<div class="rec-empty">❌ ' + esc(e.message) + '</div>';
   }
 }
 function closeRecords() { document.getElementById('recModal').classList.remove('open'); }
@@ -2215,7 +2232,7 @@ function loadRecordToForm(id) {
   if (!r.draftJson) { toast('This record predates reprint support — no saved form data to load','err'); return; }
   try {
     restoreDraft(JSON.parse(r.draftJson));
-    // It's already in the Sheet — reprinting it unchanged shouldn't add a row.
+    // It's already recorded — reprinting it unchanged shouldn't add a row.
     markSaved(recordKey(), hashStr(JSON.stringify(getDraftData(false))));
     closeRecords();
     go(0);
@@ -2223,33 +2240,54 @@ function loadRecordToForm(id) {
   } catch(e) { toast('Failed to load record: '+e.message,'err'); }
 }
 
-function deleteRecord(id) {
-  if (!APPS_SCRIPT_URL) return;
-  fetch(APPS_SCRIPT_URL, {
-    method: 'POST', mode: 'no-cors',
-    body: JSON.stringify({action: 'delete', id, token: APPS_SCRIPT_TOKEN}),
-  }).catch(e => console.warn('Delete failed:', e));
-  _cachedRecords = _cachedRecords.filter(r => String(r.id) !== String(id));
-  renderRecordsTable(_cachedRecords);
+async function deleteRecord(id) {
+  const r = _cachedRecords.find(rec => String(rec.id) === String(id));
+  if (!r || !confirm('Delete record ' + (r.invNo || '') + '? This cannot be undone.')) return;
+  try {
+    if (!await DocStore.remove(id)) { toast('Only the person who created a record can delete it', 'err'); return; }
+    _cachedRecords = _cachedRecords.filter(x => String(x.id) !== String(id));
+    renderRecordsTable(_cachedRecords);
+  } catch (e) { toast(e.message, 'err'); }
 }
 
-function clearAllRecords() {
-  if (!confirm('Delete all invoice records? This cannot be undone.')) return;
-  if (!APPS_SCRIPT_URL) return;
-  fetch(APPS_SCRIPT_URL, {
-    method: 'POST', mode: 'no-cors',
-    body: JSON.stringify({action: 'clear', token: APPS_SCRIPT_TOKEN}),
-  }).catch(e => console.warn('Clear failed:', e));
-  _cachedRecords = [];
-  renderRecordsTable([]);
+// Deletes only the signed-in user's own records (RLS forbids the rest).
+async function clearAllRecords() {
+  const mine = _cachedRecords.filter(r => r.mine).length;
+  if (!mine) { toast('You have no records of your own to delete', 'err'); return; }
+  if (!confirm('Delete all ' + mine + ' record(s) you created? Other people\'s records are kept. This cannot be undone.')) return;
+  try {
+    await DocStore.removeAllMine();
+    _cachedRecords = _cachedRecords.filter(r => !r.mine);
+    renderRecordsTable(_cachedRecords);
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// AUTH GATE (magic link; accounts are created by an admin, never here)
+// ═══════════════════════════════════════════════════════════════════════
+function authMsg(text,isErr){const m=document.getElementById('authMsg');m.textContent=text;m.className='auth-msg'+(isErr?' err':'');}
+async function sendLoginLink(){
+  const btn=document.getElementById('authBtn');btn.disabled=true;
+  try{await DocStore.sendLoginLink(document.getElementById('authEmail').value);authMsg('Check your inbox for the login link.');}
+  catch(e){authMsg(/signups not allowed|not found/i.test(e.message)?'This email has no account. Ask the admin to invite you.':e.message,true);}
+  finally{btn.disabled=false;}
+}
+async function startAuth(){
+  try{
+    const me=await DocStore.session();
+    if(!me){authMsg('');return;}
+    document.getElementById('authGate').classList.add('off');
+    document.getElementById('navUser').textContent=me.email;
+    autoInvoiceNumber();
+  }catch(e){authMsg(e.message,true);}
 }
 
 function recordsToRows(recs) {
-  const headers = ['Invoice No.','Invoice Date','Type','Buyer','Amount','Currency','POL','POD','Items','Generated At'];
+  const headers = ['Invoice No.','Invoice Date','Type','Buyer','Amount','Currency','POL','POD','Items','Generated At','Created By'];
   const data = recs.map(r => [
     r.invNo||'', r.invDate||'', r.docType||'', r.buyer||'',
     r.amount||0, r.currency||'', r.pol||'', r.pod||'',
-    r.items||0, r.createdAt ? new Date(r.createdAt).toLocaleString('en-IN') : ''
+    r.items||0, r.createdAt ? new Date(r.createdAt).toLocaleString('en-IN') : '', r.createdBy||''
   ]);
   return [headers, ...data];
 }
@@ -2274,7 +2312,7 @@ function exportRecordsExcel() {
   if (typeof XLSX === 'undefined') { toast('Excel library not loaded — try CSV instead','err'); return; }
   const rows = recordsToRows(recs);
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [14,12,10,28,12,8,22,22,6,20].map(w=>({wch:w}));
+  ws['!cols'] = [14,12,10,28,12,8,22,22,6,20,26].map(w=>({wch:w}));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Invoice Records');
   XLSX.writeFile(wb, 'MICBAC_Invoice_Records_'+new Date().toISOString().slice(0,10)+'.xlsx');
@@ -2338,7 +2376,7 @@ function makePDF(gmailUrl) {
       <div style="display:flex;gap:8px">
         <button class="btn bs" onclick="exportRecordsCSV()" style="font-size:.78rem;padding:7px 14px">&#8595; Export CSV</button>
         <button class="btn bs" onclick="exportRecordsExcel()" style="font-size:.78rem;padding:7px 14px;background:#1B5E20;color:#fff;border-color:#1B5E20">&#8595; Export Excel</button>
-        <button class="btn bs" onclick="clearAllRecords()" style="font-size:.78rem;padding:7px 14px;color:#c62828;border-color:#c62828">Clear All</button>
+        <button class="btn bs" onclick="clearAllRecords()" style="font-size:.78rem;padding:7px 14px;color:#c62828;border-color:#c62828">Clear My Records</button>
         <button class="btn bs" onclick="closeRecords()" style="font-size:.78rem;padding:7px 14px">Close</button>
       </div>
     </div>
