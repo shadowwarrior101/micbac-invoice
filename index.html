@@ -1347,7 +1347,7 @@ function autoInvoiceNumber(force) {
   el.value = _autoNo = fallback;
   if (!DocStore.me()) return;   // not signed in yet; startAuth() calls us again
   const prefix = NUMBER_PREFIX[series], fy = getCurrentFY();
-  DocStore.maxSeq(prefix, fy).then(max => {
+  DocStore.maxSeq(series, prefix, fy).then(max => {
     const next = prefix + String(max + 1).padStart(3, '0') + '/' + fy;
     if (el.value === fallback) el.value = _autoNo = next;
   }).catch(e => console.warn('next number lookup failed, using local fallback:', e));

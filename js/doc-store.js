@@ -108,10 +108,10 @@
     return count || 0;
   }
 
-  // Highest sequence used for this prefix + FY across ALL records (including
-  // ones this user can't see), so restricted users never reuse a number.
-  async function maxSeq(prefix, fy) {
-    const { data, error } = await sb.rpc("invoice_max_seq", { p_prefix: prefix, p_fy: fy });
+  // Highest sequence used for this type + prefix + FY across ALL records
+  // (including ones this user can't see), so restricted users never reuse a number.
+  async function maxSeq(docType, prefix, fy) {
+    const { data, error } = await sb.rpc("invoice_max_seq", { p_doc_type: docType, p_prefix: prefix, p_fy: fy });
     if (error) fail("Could not get next number", error);
     return data || 0;
   }
