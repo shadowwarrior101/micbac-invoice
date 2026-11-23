@@ -24,6 +24,9 @@ other user sees everything (including exports' records). Works the same as befor
   timestamps kept; full users see 117, exports sees 0.
 - `20261123061917_invoice_max_seq_by_type`: series count only their own doc type. Pre-series quotations were
   numbered MIPLWB/NNN (e.g. MIPLWB/90712), which made the next invoice 90713 — the old Apps Script had the same flaw.
+- `20261123062054_exclude_typo_numbers`: new `exclude_from_numbering` flag, set on the hand-typed invoices
+  MIPLWB/829, /0905, /907 (26-27) so the next invoice is 058, not 908. Their numbers are unchanged.
+  To ignore another outlier later: set `exclude_from_numbering = true` on that row (SQL editor).
 - Verified: migration + RLS assertions run against the live DB in rolled-back transactions (both migrations); 12 unit tests pass.
 
 **Decisions / deviations**
@@ -33,8 +36,6 @@ other user sees everything (including exports' records). Works the same as befor
 - Sheet token was public, so the Sheet could never enforce per-user visibility — hence the move.
 
 **Pending**
-- Next-invoice number reads 907 because of hand-typed invoice numbers MIPLWB/829, MIPLWB/0905, MIPLWB/907 (26-27);
-  real sequence is at 057. Awaiting decision on correcting those records.
 - Invite exports@micbacindia.com in Supabase Auth; add the site URL to Auth → URL Configuration → Redirect URLs.
 - After import: undeploy the Apps Script web app (its public token still allows reading/wiping the Sheet).
 - Logged-in UI not yet checked in a browser.
