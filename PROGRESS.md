@@ -19,6 +19,11 @@ other user sees everything (including exports' records). Works the same as befor
 - Records modal: new "Created By" column (also in CSV/Excel); delete button only on your own rows;
   "Clear All" became "Clear My Records" (RLS can't delete other people's rows anyway).
 - Save/Load Draft stay per-browser localStorage, unchanged.
+- Imported all 117 Sheet records (26 invoices, 91 quotations; 110 with form data) via
+  `supabase db query --linked -f data-import/sheet-import.sql` (gitignored — real customer data). Original
+  timestamps kept; full users see 117, exports sees 0.
+- `20261123061917_invoice_max_seq_by_type`: series count only their own doc type. Pre-series quotations were
+  numbered MIPLWB/NNN (e.g. MIPLWB/90712), which made the next invoice 90713 — the old Apps Script had the same flaw.
 - Verified: migration + RLS assertions run against the live DB in rolled-back transactions (both migrations); 12 unit tests pass.
 
 **Decisions / deviations**
@@ -28,8 +33,8 @@ other user sees everything (including exports' records). Works the same as befor
 - Sheet token was public, so the Sheet could never enforce per-user visibility — hence the move.
 
 **Pending**
-- Import the 117 Sheet records: `data-import/sheet-import.sql` (gitignored — real customer data; safe to re-run, it
-  aborts if already imported). Needs the Supabase CLI logged in to the Micbac account.
+- Next-invoice number reads 907 because of hand-typed invoice numbers MIPLWB/829, MIPLWB/0905, MIPLWB/907 (26-27);
+  real sequence is at 057. Awaiting decision on correcting those records.
 - Invite exports@micbacindia.com in Supabase Auth; add the site URL to Auth → URL Configuration → Redirect URLs.
 - After import: undeploy the Apps Script web app (its public token still allows reading/wiping the Sheet).
 - Logged-in UI not yet checked in a browser.
