@@ -1,5 +1,15 @@
 # PROGRESS
 
+## 2026-11-25 — Goods amount + port picker fixes
+
+**Done**
+- Goods table: a row's Amount now updates while typing Qty/Rate (`updateRowAmount`). It was only drawn on
+  table rebuild, so the row being edited kept showing its old amount (e.g. $0.00 on a newly added row).
+- Port pickers: "Clear selection" option at the top of the list once a port is chosen.
+- Port of Loading is now validated on step ② (was marked required but never checked; it was always pre-filled
+  with Kolkata, which can now be cleared).
+- Verified on the live site: row 4 (28 × 2952) shows $82,656.00 as you type; clearing Mundra resets the picker.
+
 ## 2026-11-23 — Records move to Supabase; exports@ sees only its own
 
 **Goal:** `exports@micbacindia.com` sees only the invoices / proformas / quotations it created; every
