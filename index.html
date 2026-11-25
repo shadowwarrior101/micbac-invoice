@@ -268,6 +268,7 @@ nav{background:var(--blk);padding:0 36px;display:flex;align-items:center;justify
 .port-opt:last-child{border:none}
 .port-opt:hover,.port-opt:focus{background:var(--lorg);outline:none}
 .port-opt.active{background:var(--lorg);font-weight:600}
+.port-opt.port-clear{color:#c62828;font-weight:600}
 .port-code{
   font-family:"JetBrains Mono",monospace;
   font-size:.74rem;color:var(--dorg);
@@ -821,6 +822,10 @@ function chk(n, silent) {
     if (!el?.value?.trim()) { if (!silent) { toast("Fill all required fields","err"); el?.focus(); } return false; }
   }
   if (n===1) {
+    // Port of Loading is required too; it was always pre-filled, but can now be cleared.
+    const polVal = (document.getElementById("pol")?.value||"").trim() ||
+                   (document.getElementById("polManual")?.value||"").trim();
+    if (!polVal) { if (!silent) toast("Select or type a Port of Loading","err"); return false; }
     const podVal = (document.getElementById("pod")?.value||"").trim() ||
                    (document.getElementById("podManual")?.value||"").trim();
     if (!podVal) { if (!silent) toast("Select or type a Port of Destination","err"); return false; }
@@ -862,15 +867,22 @@ function rebuildGoods() {
       <td><textarea style="min-height:48px;resize:vertical" oninput="goodsRows[${i}].desc=this.value">${esc(r.desc)}</textarea></td>
       <td><input class="mono" value="${esc(r.hscode)}" oninput="goodsRows[${i}].hscode=this.value" style="width:80px"/></td>
       <td><input value="${esc(r.unit)}" oninput="goodsRows[${i}].unit=this.value.toUpperCase();this.value=this.value.toUpperCase()"/></td>
-      <td><input class="mono" type="number" value="${esc(r.qty)}" oninput="goodsRows[${i}].qty=this.value;updateTotals()" style="width:64px"/></td>
-      <td><input class="mono" type="number" value="${esc(r.rate)}" oninput="goodsRows[${i}].rate=this.value;updateTotals()" style="width:84px"/></td>
-      <td class="mono" style="text-align:right;font-weight:600">${getCurrSymbol()}${fmt(amt)}</td>
+      <td><input class="mono" type="number" value="${esc(r.qty)}" oninput="goodsRows[${i}].qty=this.value;updateRowAmount(${i});updateTotals()" style="width:64px"/></td>
+      <td><input class="mono" type="number" value="${esc(r.rate)}" oninput="goodsRows[${i}].rate=this.value;updateRowAmount(${i});updateTotals()" style="width:84px"/></td>
+      <td class="mono" id="gAmt${i}" style="text-align:right;font-weight:600">${getCurrSymbol()}${fmt(amt)}</td>
       <td><input class="mono" value="${esc(r.bags||'')}" placeholder="e.g. 35" oninput="goodsRows[${i}].bags=this.value" style="width:70px"/></td>
       <td><input class="mono" value="${esc(r.itemGrossWt||'')}" placeholder="e.g. 28199.50" oninput="goodsRows[${i}].itemGrossWt=this.value" style="width:90px"/></td>
       <td><button class="del-btn" onclick="goodsRows.splice(${i},1);rebuildGoods()">✕</button></td>`;
     tbody.appendChild(tr);
   });
   updateTotals();
+}
+
+// The amount cell is only drawn by rebuildGoods(), so refresh it while typing
+// (otherwise the row being edited keeps showing its old amount).
+function updateRowAmount(i) {
+  const cell = document.getElementById("gAmt" + i), r = goodsRows[i];
+  if (cell && r) cell.textContent = getCurrSymbol() + fmt(num(r.qty) * num(r.rate));
 }
 
 function updateTotals() {
@@ -1026,7 +1038,10 @@ function renderPortList(id, ports) {
     return;
   }
   const currentVal = document.getElementById(id).value;
-  list.innerHTML = ports.map((p) => {
+  // Offer a way back to "nothing selected" once a port is chosen.
+  const clearOpt = currentVal
+    ? `<div class="port-opt port-clear" tabindex="-1" data-clear="1">&#10005;&nbsp; Clear selection</div>` : '';
+  list.innerHTML = clearOpt + ports.map((p) => {
     const label = p.name + ', ' + p.country;
     const isActive = currentVal === label;
     // Use data-* attributes instead of inline JS — avoids quote-escaping bugs
@@ -1175,7 +1190,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const opt = e.target.closest('.port-opt');
       if (opt) {
         e.preventDefault();
-        selectPort(id, opt.dataset.code, opt.dataset.label);
+        if (opt.dataset.clear) { restorePort(id, ''); closePortPicker(id); }
+        else selectPort(id, opt.dataset.code, opt.dataset.label);
       }
     });
   });
